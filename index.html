@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Dupe Finder</title>
+<style>
+:root{--bg:#faf6f1;--card:#fff;--tx:#241b17;--mu:#7a6c64;--ac:#b5543a;--ac2:#f3e2da;--bd:#eadfd6}
+@media (prefers-color-scheme:dark){:root{--bg:#171210;--card:#231c19;--tx:#f5ece6;--mu:#a89990;--ac:#e0795c;--ac2:#3a2620;--bd:#352b26}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font-family:system-ui,sans-serif;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+main{max-width:640px;margin:0 auto;padding:22px 14px 40px}
+h1{font-family:Georgia,serif;font-size:28px;margin:0 0 16px}
+.btns{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+button{font:600 15px system-ui,sans-serif;border:0;border-radius:14px;padding:14px;background:var(--ac);color:#fff;cursor:pointer}
+button.alt{background:var(--ac2);color:var(--ac)}
+#prev{display:none;width:100%;max-height:220px;object-fit:contain;margin:16px 0 0;border-radius:16px;background:var(--card);border:1px solid var(--bd)}
+#st{text-align:center;color:var(--mu);font-size:14px;margin:14px 0}
+#grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+a.it{background:var(--card);border:1px solid var(--bd);border-radius:16px;overflow:hidden;text-decoration:none;color:var(--tx);display:flex;flex-direction:column}
+a.it img{width:100%;aspect-ratio:1;object-fit:cover;background:var(--ac2)}
+.in{padding:9px 10px 11px}
+.t{font-size:13px;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.p{font-weight:700;color:var(--ac);margin-top:5px}
+.s{font-size:12px;color:var(--mu)}
+#add{display:none;background:var(--card);border:1px solid var(--bd);border-radius:16px;padding:14px;margin-top:14px}
+#add input{width:100%;padding:11px;margin:0 0 8px;border:1px solid var(--bd);border-radius:10px;background:var(--bg);color:var(--tx);font-size:14px}
+.lnk{background:none;color:var(--mu);font-weight:500;font-size:13px;width:100%;margin-top:18px;text-decoration:underline}
+</style>
+</head>
+<body>
+<main>
+<h1>Dupe Finder 👜</h1>
+<div class="btns">
+  <button id="bG">🖼️ Galerie</button>
+  <button id="bC" class="alt">📷 Photo</button>
+</div>
+<input id="fG" type="file" accept="image/*" hidden>
+<input id="fC" type="file" accept="image/*" capture="environment" hidden>
+<img id="prev" alt="">
+<div id="st">Ajoute une photo de sac pour voir les plus ressemblants.</div>
+<div id="grid"></div>
+
+<button class="lnk" id="bAdd">➕ Ajouter un sac au catalogue</button>
+<div id="add">
+  <input id="aN" placeholder="Nom du sac">
+  <input id="aP" placeholder="Prix (ex : 24,99 €)">
+  <input id="aL" placeholder="Lien de la page du sac (https://…)">
+  <button class="alt" id="aF" style="width:100%;margin-bottom:8px">Choisir sa photo</button>
+  <input id="aI" type="file" accept="image/*" hidden>
+  <button id="aOk" style="width:100%">Ajouter</button>
+</div>
+</main>
+<script>
+/* Aucune IA ni clé : la ressemblance est calculée dans ton navigateur (couleurs de l’image). */
+const $=id=>document.getElementById(id);
+const get=k=>{try{return JSON.parse(localStorage.getItem(k)||'[]')}catch(e){return []}};
+const put=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}};
+let catalog=null;
+
+function loadImg(src,cors){return new Promise((ok,ko)=>{const im=new Image();if(cors)im.crossOrigin='anonymous';im.onload=()=>ok(im);im.onerror=ko;im.src=src})}
+function draw(im,max){const s=Math.min(1,max/Math.max(im.width,im.height)),c=document.createElement('canvas');c.width=Math.max(1,im.width*s|0);c.height=Math.max(1,im.height*s|0);c.getContext('2d').drawImage(im,0,0,c.width,c.height);return c}
+/* signature = histogramme de couleurs 4x4x4 (fond blanc ignoré) + grille 3x3 de couleurs moyennes */
+function sig(im){
+  const c=draw(im,64),d=c.getContext('2d').getImageData(0,0,c.width,c.height).data,h=new Float32Array(64);let n=0;
+  for(let i=0;i<d.length;i+=4){const r=d[i],g=d[i+1],b=d[i+2];if(r>232&&g>232&&b>232)continue;h[(r>>6)*16+(g>>6)*4+(b>>6)]++;n++}
+  if(n)for(let i=0;i<64;i++)h[i]/=n;return h}
+function sim(a,b){let s=0;for(let i=0;i<64;i++)s+=Math.min(a[i],b[i]);return s}
+const num=p=>parseFloat(String(p||'').replace(/[^\d,.]/g,'').replace(',','.'))||0;
+
+async function getCatalog(){
+  if(catalog)return catalog;
+  let items=[];
+  try{
+    const j=await (await fetch('https://dummyjson.com/products/category/womens-bags?limit=50')).json();
+    items=(j.products||[]).map(p=>({title:p.title,price:'$'+p.price,img:p.thumbnail,link:'https://www.google.com/search?tbm=shop&q='+encodeURIComponent(p.title)}));
+  }catch(e){}
+  items=items.concat(get('mine'));
+  await Promise.all(items.map(async it=>{try{it.sig=sig(await loadImg(it.img,!it.img.startsWith('data:')))}catch(e){it.sig=null}}));
+  return catalog=items;
+}
+
+async function go(file){
+  $('grid').innerHTML='';$('st').textContent='Comparaison des sacs…';
+  try{
+    const im=await loadImg(URL.createObjectURL(file));
+    $('prev').src=draw(im,600).toDataURL('image/jpeg',.8);$('prev').style.display='block';
+    const q=sig(im),cat=await getCatalog();
+    const res=cat.filter(x=>x.sig).map(x=>({x,s:sim(q,x.sig)})).sort((a,b)=>b.s-a.s).slice(0,12);
+    if(!res.length){$('st').textContent='Catalogue vide : ajoute des sacs avec le bouton ➕ ci-dessous.';return}
+    $('st').textContent='Les plus ressemblants :';
+    $('grid').innerHTML=res.map(()=>`<a class="it" target="_blank" rel="noopener"><img alt=""><div class="in"><div class="t"></div><div class="p"></div><div class="s"></div></div></a>`).join('');
+    document.querySelectorAll('.it').forEach((a,i)=>{const {x,s}=res[i];a.href=x.link||'#';a.querySelector('img').src=x.img;a.querySelector('.t').textContent=x.title;a.querySelector('.p').textContent=x.price||'';a.querySelector('.s').textContent=Math.round(s*100)+' % de ressemblance'});
+  }catch(e){$('st').textContent='Impossible de lire cette photo.'}
+}
+
+$('bG').onclick=()=>$('fG').click();
+$('bC').onclick=()=>$('fC').click();
+$('fG').onchange=$('fC').onchange=e=>{const f=e.target.files[0];e.target.value='';if(f)go(f)};
+$('bAdd').onclick=()=>{const s=$('add').style;s.display=s.display==='block'?'none':'block'};
+$('aF').onclick=()=>$('aI').click();
+let addImg=null;
+$('aI').onchange=async e=>{const f=e.target.files[0];if(!f)return;addImg=draw(await loadImg(URL.createObjectURL(f)),300).toDataURL('image/jpeg',.8);$('aF').textContent='Photo choisie ✅'};
+$('aOk').onclick=()=>{
+  if(!addImg||!$('aN').value.trim()){$('st').textContent='Il faut au moins un nom et une photo.';return}
+  const m=get('mine');m.push({title:$('aN').value.trim(),price:$('aP').value.trim(),link:$('aL').value.trim(),img:addImg});put('mine',m);
+  catalog=null;addImg=null;['aN','aP','aL'].forEach(i=>$(i).value='');$('aF').textContent='Choisir sa photo';$('add').style.display='none';$('st').textContent='Sac ajouté ✅';
+};
+</script>
+</body>
+</html>
