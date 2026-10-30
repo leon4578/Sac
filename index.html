@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Dupe Finder – sacs</title>
+<style>
+:root{--bg:#faf6f1;--card:#fff;--tx:#241b17;--mu:#7a6c64;--ac:#b5543a;--ac2:#f3e2da;--bd:#eadfd6;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#171210;--card:#231c19;--tx:#f5ece6;--mu:#a89990;--ac:#e0795c;--ac2:#3a2620;--bd:#352b26}}
+:root[data-theme="dark"]{--bg:#171210;--card:#231c19;--tx:#f5ece6;--mu:#a89990;--ac:#e0795c;--ac2:#3a2620;--bd:#352b26}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font-family:Georgia,"Times New Roman",serif;line-height:1.45}
+main{max-width:560px;margin:0 auto;padding:22px 16px 40px}
+h1{font-size:28px;margin:0 0 4px}
+.sub{color:var(--mu);font-family:system-ui,sans-serif;font-size:14px;margin:0 0 20px}
+.btns{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+button,.btn{font-family:system-ui,sans-serif;font-size:15px;font-weight:600;border:0;border-radius:14px;padding:14px 10px;cursor:pointer;background:var(--ac);color:#fff;text-align:center;text-decoration:none;display:block}
+.btn.alt{background:var(--ac2);color:var(--ac)}
+#prev{display:none;margin:16px 0;border-radius:16px;overflow:hidden;border:1px solid var(--bd)}
+#prev img{width:100%;max-height:320px;object-fit:contain;display:block;background:var(--card)}
+#status{font-family:system-ui,sans-serif;color:var(--mu);font-size:14px;text-align:center;margin:14px 0}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:16px;padding:14px;margin:12px 0;font-family:system-ui,sans-serif}
+.card h3{margin:0 0 2px;font-size:16px;font-family:Georgia,serif}
+.tag{display:inline-block;font-size:12px;background:var(--ac2);color:var(--ac);padding:2px 8px;border-radius:99px;margin:4px 4px 0 0}
+.price{font-weight:700;color:var(--ac)}
+.card p{margin:6px 0 10px;font-size:14px;color:var(--mu)}
+.links{display:flex;gap:8px;flex-wrap:wrap}
+.links a{font-size:13px;font-weight:600;color:var(--ac);border:1px solid var(--bd);padding:7px 11px;border-radius:10px;text-decoration:none}
+.note{font-family:system-ui,sans-serif;font-size:12px;color:var(--mu);text-align:center;margin-top:20px}
+h2{font-size:18px;margin:22px 0 4px}
+</style>
+</head>
+<body>
+<main>
+<h1>Dupe Finder 👜</h1>
+<p class="sub">Ajoute une photo du sac que tu aimes, je te trouve des alternatives qui lui ressemblent, en moins cher.</p>
+<div class="btns">
+  <button id="bGal">🖼️ Ma galerie</button>
+  <button id="bCam" class="alt">📷 Prendre en photo</button>
+</div>
+<input id="fGal" type="file" accept="image/*" hidden>
+<input id="fCam" type="file" accept="image/*" capture="environment" hidden>
+<div id="prev"><img id="img" alt="Sac choisi"></div>
+<div id="status"></div>
+<div id="out"></div>
+<p class="note">Les prix sont des estimations. Clique sur les liens pour voir les vrais prix et la disponibilité.</p>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+const enc=encodeURIComponent;
+$('bGal').onclick=()=>$('fGal').click();
+$('bCam').onclick=()=>$('fCam').click();
+$('fGal').onchange=$('fCam').onchange=e=>{const f=e.target.files[0];e.target.value='';if(f)go(f)};
+
+function shrink(file){return new Promise((res,rej)=>{
+  const u=URL.createObjectURL(file),im=new Image();
+  im.onload=()=>{const s=Math.min(1,1024/Math.max(im.width,im.height)),c=document.createElement('canvas');
+    c.width=Math.round(im.width*s);c.height=Math.round(im.height*s);c.getContext('2d').drawImage(im,0,0,c.width,c.height);
+    c.toBlob(b=>b?res({blob:b,url:c.toDataURL('image/jpeg',.8)}):rej(new Error('img')),'image/jpeg',.85)};
+  im.onerror=()=>rej(new Error('img'));im.src=u})}
+
+function esc(s){const d=document.createElement('div');d.textContent=s==null?'':String(s);return d.innerHTML}
+
+async function go(file){
+  $('out').innerHTML='';$('status').textContent='Analyse du sac… ✨';
+  try{
+    const {blob,url}=await shrink(file);
+    $('img').src=url;$('prev').style.display='block';
+    if(typeof claude==='undefined'){$('status').textContent='Ouvre cette page depuis Claude pour que l’analyse fonctionne.';return}
+    const sample=await claude.use('sample');
+    if(!sample){$('status').textContent='Cette fonction n’est pas disponible ici.';return}
+    const prompt=`Tu es une experte mode et sacs à main. Analyse le sac sur la photo. Réponds UNIQUEMENT en JSON, en français, sans texte autour, au format :
+{"sac":{"nom":"description courte","marque_probable":"marque ou inconnue","style":"ex: cabas, bandoulière, mini sac","couleur":"","matiere":"","prix_estime":"fourchette en €"},
+"dupes":[{"nom":"modèle ou type d’article précis","boutique":"ex: Zara, Mango, H&M, Pull&Bear, Amazon, Shein, Vinted, Kazar, Parfois","prix":"estimation en €","pourquoi":"ressemblance en une phrase","recherche":"requête de recherche courte et efficace"}]}
+Donne 6 dupes variés (de ~10 € à ~60 €), plausibles et réellement recherchables. Si l’image n’est pas un sac, mets "sac":null et "dupes":[].`;
+    const data=await sample.json(prompt,{images:[blob],modelTier:'default'});
+    render(data);
+  }catch(e){
+    $('status').textContent=(e&&e.code==='not_granted')?'Autorisation refusée.':(e&&e.code==='rate_limited')?'Trop de demandes, réessaie dans un instant.':'Oups, l’analyse a échoué. Réessaie avec une autre photo.';
+  }
+}
+
+function render(d){
+  $('status').textContent='';
+  if(!d||!d.sac){$('out').innerHTML='<div class="card">Je ne vois pas de sac sur cette photo 🤔 Essaie une photo plus nette.</div>';return}
+  const s=d.sac,q0=[s.marque_probable&&s.marque_probable!=='inconnue'?s.marque_probable:'',s.style,s.couleur,'sac'].filter(Boolean).join(' ');
+  let h='<h2>Alternatives moins chères</h2>';
+  (d.dupes||[]).forEach(x=>{const q=enc(x.recherche||x.nom);
+    h+=`<a class="card" style="display:block;text-decoration:none;color:inherit" target="_blank" rel="noopener" href="https://www.google.com/search?tbm=shop&q=${q}"><h3>${esc(x.nom)}</h3><span class="tag">${esc(x.boutique)}</span> <span class="price">${esc(x.prix)}</span>
+    <p style="margin-bottom:0">${esc(x.pourquoi)}</p></a>`});
+  $('out').innerHTML=h;
+}
+</script>
+</body>
+</html>
